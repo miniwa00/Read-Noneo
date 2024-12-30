@@ -13,10 +13,12 @@ import AtomAnimation from '@/components/AtomAnimation';
 import NoneoScreen from '@/components/NoneoScreen';
 import LeftScreen from '@/components/LeftScreen';
 import RightScreen from '@/components/RightScreen';
+import { useRouter } from 'expo-router';
 
 const { height, width } = Dimensions.get('window');
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [showGame, setShowGame] = useState(false);
   const [showLeftScreen, setShowLeftScreen] = useState(false);
   const [showRightScreen, setShowRightScreen] = useState(false);
@@ -97,28 +99,18 @@ export default function HomeScreen() {
 
   const handleRightScreenOpen = () => {
     setShowRightScreen(true);
-    rightSlideAnim.value = withTiming(0, {
-      duration: 300,
-      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-    });
-    atomOpacity.value = withTiming(0, {
-      duration: 300,
-      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+    rightSlideAnim.value = withSpring(0, {
+      damping: 20,
+      stiffness: 90,
     });
   };
 
   const handleRightScreenClose = () => {
-    rightSlideAnim.value = withTiming(width, {
-      duration: 300,
-      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+    rightSlideAnim.value = withSpring(width, {
+      damping: 20,
+      stiffness: 90,
     });
-    atomOpacity.value = withTiming(1, {
-      duration: 300,
-      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-    });
-    setTimeout(() => {
-      setShowRightScreen(false);
-    }, 300);
+    setTimeout(() => setShowRightScreen(false), 300);
   };
 
   return (
