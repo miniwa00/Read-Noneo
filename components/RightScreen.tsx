@@ -1,4 +1,4 @@
-import { View, StyleSheet, TouchableOpacity, Platform, RefreshControl, FlatList, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform, RefreshControl, FlatList, ActivityIndicator, BackHandler } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState, useEffect, useCallback } from 'react';
@@ -136,26 +136,28 @@ export default function RightScreen({ onClose }: RightScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedMemos, setSelectedMemos] = useState<Set<string>>(new Set());
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isUnmounting, setIsUnmounting] = useState(false);
 
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 20;
 
   const fetchMemos = async (loadMore = false) => {
-    if (isLoading || (!loadMore && !refreshing)) return;
-    if (loadMore && !hasMore) return;
-
+    console.log(`\n[${new Date().toLocaleString()}] fetchMemos 함수 호출`);
+    if (isLoading || isUnmounting) {
+      console.log(`isLoading || isUnmounting`);
+      return;
+    }
+    if (loadMore && !hasMore) {
+      console.log(`loadMore && !hasMore`);
+      return;
+    }
+  
     try {
       setIsLoading(true);
       const userId = 'user1';
       const memosRef = collection(db, 'app/memos', userId);
-      
-      // 쿼리 생성
-      let memosQuery = query(
-        memosRef,
-        orderBy('createdAt', 'desc'),
-        limit(ITEMS_PER_PAGE)
-      );
-      
-      // 추가 로딩인 경우 마지막 문서 이후부터 조회
+  
+      let memosQuery;
       if (loadMore && lastVisible) {
         memosQuery = query(
           memosRef,
@@ -163,57 +165,102 @@ export default function RightScreen({ onClose }: RightScreenProps) {
           startAfter(lastVisible),
           limit(ITEMS_PER_PAGE)
         );
+      } else if (!loadMore) {
+        // console.log(`[${new Date().toLocaleString()}] 처음부터 로드`);
+        memosQuery = query(
+          memosRef,
+          orderBy('createdAt', 'desc'),
+          limit(ITEMS_PER_PAGE)
+        );
+      } else {
+        // console.warn(`[${new Date().toLocaleString()}] lastVisible 값이 유효하지 않아 데이터를 처음부터 로드하지 않습니다.`);
+        return;
       }
-
+  
       const querySnapshot = await getDocs(memosQuery);
+      console.log(`getDocs 트래픽 발생`);
       const fetchedMemos: Memo[] = [];
-      
+  
       querySnapshot.forEach((doc) => {
         fetchedMemos.push({
           id: doc.id,
           ...doc.data(),
         } as Memo);
       });
-
-      // 마지막 문서 저장
-      const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
-      setLastVisible(lastDoc);
-      
-      // 더 불러올 데이터가 있는지 확인
-      setHasMore(querySnapshot.docs.length === ITEMS_PER_PAGE);
-
+  
+      const hasNextPage = fetchedMemos.length === ITEMS_PER_PAGE;
       if (loadMore) {
-        setMemos(prev => [...prev, ...fetchedMemos]);
+        console.log(`더 불러오기`);
+        setMemos((prev) => [...prev, ...fetchedMemos]);
       } else {
+        console.log(`처음부터 로드`);
         setMemos(fetchedMemos);
       }
+  
+      if (fetchedMemos.length > 0) {
+        setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1]);
+        console.log(`lastVisible 값이 유효하게 설정되었습니다.`);
+      } else {
+        console.log(`더 로드할 데이터가 없습니다.`);
+        setLastVisible(null);
+      }
+  
+      setHasMore(hasNextPage);
     } catch (error) {
       console.error('메모 목록 가져오기 실패:', error);
     } finally {
+      // console.log(`[${new Date().toLocaleString()}] 끝났습니다.`);
       setIsLoading(false);
     }
   };
 
+  // 화면을 나갈 때 상태 초기화
+  const handleClose = () => {
+    setIsUnmounting(true);
+    // 상태 초기화
+    setMemos([]);
+    setOpenMemoId(null);
+    setEditingMemo(null);
+    setLastVisible(null);
+    setHasMore(true);
+    setIsSelectMode(false);
+    setSelectedMemos(new Set());
+    
+    onClose();
+  };
+
   // 초기 로딩
   useEffect(() => {
-    fetchMemos();
+    if (!isUnmounting) {
+      fetchMemos();
+      setIsInitialLoad(false);
+    }
+
+    return () => {
+      setIsUnmounting(true);
+    };
   }, []);
 
   // 새로고침
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setLastVisible(null);
-    setHasMore(true);
-    await fetchMemos();
-    setRefreshing(false);
+    try {
+      setLastVisible(null);
+      setHasMore(true);
+      await fetchMemos();
+    } catch (error) {
+      console.error('새로고침 실패:', error);
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
   // 더 불러오기
-  const loadMore = () => {
-    if (!isLoading && hasMore) {
+  const loadMore = useCallback(() => {
+    if (!isLoading && hasMore && !isInitialLoad) {
       fetchMemos(true);
     }
-  };
+  }, [isLoading, hasMore, isInitialLoad]);
 
   const handleEdit = (memo: Memo) => {
     setEditingMemo(memo);
@@ -277,6 +324,27 @@ export default function RightScreen({ onClose }: RightScreenProps) {
     );
   };
 
+  // 하드웨어 백 버튼 처리
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+
+    return () => backHandler.remove();
+  }, [onClose]);
+
+  const handleBackPress = () => {
+    if (isSelectMode) {
+      // 선택 모드일 때는 선택 모드를 취소하고 선택된 메모들을 초기화
+      setIsSelectMode(false);
+      setSelectedMemos(new Set());
+    } else {
+      // 일반 모드일 때는 화면을 닫음
+      handleClose();
+    }
+  };
+
   return (
     <View style={styles.container}>
       {editingMemo ? (
@@ -288,17 +356,7 @@ export default function RightScreen({ onClose }: RightScreenProps) {
       ) : (
         <>
           <View style={styles.header}>
-            <TouchableOpacity 
-              onPress={() => {
-                if (isSelectMode) {
-                  setIsSelectMode(false);
-                  setSelectedMemos(new Set());
-                } else {
-                  onClose();
-                }
-              }} 
-              style={styles.backButton}
-            >
+            <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
               {isSelectMode ? (
                 <ThemedText style={styles.cancelText}>취소</ThemedText>
               ) : (
@@ -332,6 +390,7 @@ export default function RightScreen({ onClose }: RightScreenProps) {
             data={memos}
             renderItem={({ item }) => (
               <MemoCard
+                key={`memo-${item.id}`}
                 memo={item}
                 isOpen={openMemoId === item.id}
                 onToggle={() => setOpenMemoId(openMemoId === item.id ? null : item.id)}
@@ -342,7 +401,7 @@ export default function RightScreen({ onClose }: RightScreenProps) {
                 onLongPress={handleLongPress}
               />
             )}
-            keyExtractor={item => item.id}
+            keyExtractor={item => `memo-${item.id}`}
             contentContainerStyle={styles.listContent}
             refreshControl={
               <RefreshControl
@@ -357,6 +416,9 @@ export default function RightScreen({ onClose }: RightScreenProps) {
             onEndReached={loadMore}
             onEndReachedThreshold={0.5}
             ListFooterComponent={renderFooter}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={5}
+            windowSize={10}
           />
         </>
       )}
@@ -457,19 +519,19 @@ const styles = StyleSheet.create({
   editButtonContainer: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginTop: -8,
-    marginRight: -8,
+    marginTop: -4,
+    marginRight: -2,
   },
   editCardButton: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
     backgroundColor: 'rgba(0, 255, 157, 0.1)',
   },
   editCardButtonText: {
     color: '#00FF9D',
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
   },
   cardContainerSelected: {
     backgroundColor: '#4D3655',
@@ -493,7 +555,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cancelText: {
-    color: '#FF3B30',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
