@@ -1,6 +1,6 @@
 import { View, StyleSheet, TouchableOpacity, Platform, TextInput, ScrollView } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -11,6 +11,7 @@ import Animated, {
   useAnimatedStyle,
   Easing 
 } from 'react-native-reanimated';
+import { BackHandler } from 'react-native';
 
 interface Memo {
   id: string;
@@ -31,6 +32,15 @@ export default function EditScreen({ memo, onClose, onUpdate }: EditScreenProps)
   const [content, setContent] = useState(memo.content);
   const titleBorderColor = useSharedValue('#2A1B30');
   const contentBorderColor = useSharedValue('#2A1B30');
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+
+    return () => backHandler.remove();
+  }, [onClose]);
 
   const handleSave = async () => {
     let hasError = false;
