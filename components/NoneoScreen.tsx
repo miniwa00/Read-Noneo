@@ -10,10 +10,9 @@ import Animated, {
   FadeIn,
 } from 'react-native-reanimated';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { db } from '../firebase/config';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '@/firebase/config';
+import { doc, getDoc, setDoc, collection, addDoc } from 'firebase/firestore';
 import { Animated as RNAnimated } from 'react-native';
-import { v4 as uuidv4 } from 'uuid';
 
 const emotions = [
   '행복할',
@@ -68,7 +67,7 @@ const ExplanationAccordion = ({ isOpen, onToggle, explanation }: ExplanationAcco
         {
           maxHeight: animatedHeight.interpolate({
             inputRange: [0, 1],
-            outputRange: [0, 500]
+            outputRange: [0, 1000]
           }),
           opacity: animatedHeight
         }
@@ -277,7 +276,7 @@ export default function GameScreen({ onBack }: GameScreenProps) {
       withSpring(1.2, { damping: 10, stiffness: 200 }),
       withSpring(1, { damping: 10, stiffness: 200 })
     );
-    
+
     submitButtonRotate.value = withSequence(
       withSpring(360, { damping: 10, stiffness: 100 }),
       withTiming(0, { duration: 0 })
@@ -285,11 +284,9 @@ export default function GameScreen({ onBack }: GameScreenProps) {
 
     try {
       const userId = 'user1';
-      const docId = uuidv4();
-      const memoRef = doc(db, 'app/memos', userId, docId);
+      const memoCollectionRef = collection(db, 'app/memos', userId);
       
-      await setDoc(memoRef, {
-        id: docId,
+      await addDoc(memoCollectionRef, {
         title: titleText,
         createdAt: new Date().toISOString(),
         sentence: currentKoreanSentence,
