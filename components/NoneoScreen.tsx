@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   },
   scrollViewContent: {
     paddingTop: 30,
-    paddingBottom: 40,
+    paddingBottom: 10,
   },
   content: {
     flex: 1,
@@ -635,6 +635,7 @@ const styles = StyleSheet.create({
   },
   explanationContainer: {
     marginTop: 20,
+    marginBottom: 80,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
